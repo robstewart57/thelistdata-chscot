@@ -18,24 +18,28 @@ import Network.URI hiding (URI)
 import Data.List.Split
 
 
+-- 1) Reads The List xml data
+-- 2) Processes the file, generating triples
+-- 3) Write the RDF graph in memory to a turtle file
 main :: IO ()
 main = do
-  let fname = "../../data/live/chs2012-list-events.xml"
+  let fname = "chs2012-list-events.xml"
   f <- readFile fname
   let (Document _ _ root _) = xmlParse fname f
   let rootElem = CElem root noPos
       events =  (tag "ives:IvesMessage" /> elm) rootElem
   triples <- mapM eventTriples events
-  let prefixes = (PrefixMappings fringePrefixMappings)
+  let prefixes = (PrefixMappings listPrefixMappings)
       (rdfGraph::TriplesGraph) = mkRdf (concat triples) Nothing prefixes
   outh <- openFile "list.ttl" WriteMode
   hWriteRdf (TurtleSerializer Nothing prefixes) outh rdfGraph
   hClose outh
 
+-- Maps over the elements for each event, creating a triple
 eventTriples :: Content a -> IO Triples
 eventTriples event = do
   let id = eventID event
-      subj = unode (s2b $ fringeResource ++ id)
+      subj = unode (s2b $ thelist ++ id)
       ks = Map.keys mappings
       topLevelTriples = concatMap (\k -> genTriple subj event k mappings ) ks
       venTriple = venuTriple event
@@ -44,6 +48,7 @@ eventTriples event = do
   locationTriples <- processEventLocation event
   return ([venTriple] ++ tagTriples ++ locationTriples ++ topLevelTriples)
   
+-- Generates a triple to be added to the RDF graph.
 genTriple :: forall a. Subject -> Content a -> Node -> Map.Map Node (FilterLookup a) -> [Triple]
 genTriple subj event k mapping = 
   let obj = objectFromXml event mapping k
@@ -52,8 +57,10 @@ genTriple subj event k mapping =
    Just obj -> [triple subj k obj]
 
 
+-- Dictates wether the xml element data should be transformed into a URI resource or a literal
 data FilterLookup a = URI (CFilter a) | Literal (CFilter a) | TypedLiteral String (CFilter a)
 
+-- Only adds a node if there exists data for each given element in the xml
 objectFromXml :: Content a -> Map.Map Node (FilterLookup a) -> Node -> Maybe Node
 objectFromXml event map k =
   let (Just filterLookup) = Map.lookup k map
@@ -62,7 +69,7 @@ objectFromXml event map k =
     let s = extractTxt filt event
     in case s of
      "" -> Nothing
-     _ -> Just (unode $ s2b (fringeResource ++ urlEncode s))
+     _ -> Just (unode $ s2b (thelist ++ urlEncode s))
    (Literal filt) ->
     let s = extractTxt filt event
     in case s of
@@ -78,7 +85,7 @@ extractTxt xmlFilter event =
    _ -> ""
 
 
-
+-- | Finds nearby pubs to the venue, within 100 metres
 findNearbyPubs venue vid = do
   let latFilter  = tag "venue" /> tag "latitude" /> txt
       longFilter = tag "venue" /> tag "longitude" /> txt
@@ -90,7 +97,7 @@ findNearbyPubs venue vid = do
    Left e -> error (show e)
    Right g -> do
     let subj = (unode . s2b) vid
-        pred = unode . s2b $ fringeProp ++ "neabyPub"
+        pred = unode . s2b $ thelistProp ++ "neabyPub"
         linkTriples = map (triple subj pred . subjectOf)  (triplesOf g)
     return (linkTriples ++ triplesOf g)
 
@@ -109,9 +116,6 @@ httpCallForRdf uri = do
  response <- simpleHTTP request >>= getResponseBody
  return $ parseString (TurtleParser Nothing Nothing) (B.pack response)
 
-
-fringeResource = "http://www.edfringe.com/resource#"
-fringeProp = "http://www.edfringe.com/prop#"
 lodeProp = "http://linkedevents.org/ontology/"
 geonamesProp = "http://www.geonames.org/ontology#"
 wg84posProp = "http://www.w3.org/2003/01/geo/wgs84_pos#"
@@ -120,16 +124,18 @@ linkedGeoData = "http://linkedgeodata.org/ontology/"
 thelist = "http://www.list.co.uk/onto/resource#"
 thelistProp = "http://www.list.co.uk/onto/prop#"
 
-fringePrefixMappings :: Map.Map B.ByteString B.ByteString
-fringePrefixMappings = Map.fromList $
-  [ (s2b "fringe", s2b fringeResource)
-  , (s2b "fringeprop", s2b fringeProp)
+listPrefixMappings :: Map.Map B.ByteString B.ByteString
+listPrefixMappings = Map.fromList $
+  [ (s2b "list", s2b thelist)
+  , (s2b "listProp", s2b thelistProp)
   , (s2b "lode", s2b lodeProp)
   , (s2b "gn", s2b geonamesProp)
   , (s2b "wgs84_pos", s2b wg84posProp)
   , (s2b "lgdo", s2b linkedGeoData)
   ]
-  
+
+
+-- TODO - it is this mapping that needs scaling up to match every element in The List xml data!  
 mappings :: forall a. Map.Map Node (FilterLookup a)
 mappings = Map.fromList
   [ (unode (s2b (lodeProp++"atTime")), Literal (tag "Event" /> tag "Schedule" /> tag "Performance" /> tag "StartDateTime" /> txt)) -- TODO typed literal as date
