@@ -36,6 +36,18 @@ Files
 
 What next?
 --
-- You can install a SPARQL endpoit.. point it at the .ttl file, and
+- You can install a SPARQL endpoint... point it at the .ttl file, and
 you have a *semantic search endpoint* for free out-of-the-box.
+
+<pre>
+<#fringe>    rdf:type ja:RDFDataset ;
+    rdfs:label "FringeData" ;
+    ja:defaultGraph
+      [ rdfs:label "" ;
+        a ja:MemoryModel ;
+        ja:content [ja:externalContent <file:/location/to/rdf_output.ttl> ] ;
+      ] ;
+    .
+</pre>
+
 - Get in touch with me.. I'd happily add more (robstewart57@gmail.com).

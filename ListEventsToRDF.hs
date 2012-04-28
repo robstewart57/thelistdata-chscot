@@ -16,24 +16,30 @@ import Network.HTTP
 import Text.RDF.RDF4H.TurtleParser
 import Network.URI hiding (URI)
 import Data.List.Split
-
+import System.Environment (getArgs)
 
 -- 1) Reads The List xml data
 -- 2) Processes the file, generating triples
 -- 3) Write the RDF graph in memory to a turtle file
 main :: IO ()
 main = do
-  let fname = "chs2012-list-events.xml"
-  f <- readFile fname
-  let (Document _ _ root _) = xmlParse fname f
-  let rootElem = CElem root noPos
-      events =  (tag "ives:IvesMessage" /> elm) rootElem
-  triples <- mapM eventTriples events
-  let prefixes = (PrefixMappings listPrefixMappings)
-      (rdfGraph::TriplesGraph) = mkRdf (concat triples) Nothing prefixes
-  outh <- openFile "list.ttl" WriteMode
-  hWriteRdf (TurtleSerializer Nothing prefixes) outh rdfGraph
-  hClose outh
+  args <- getArgs
+  case length args of
+   0 -> error showUsage
+   _ -> do
+    let fname = args !! 0
+    f <- readFile fname
+    let (Document _ _ root _) = xmlParse fname f
+    let rootElem = CElem root noPos
+        events =  (tag "ives:IvesMessage" /> elm) rootElem
+    triples <- mapM eventTriples events
+    let prefixes = (PrefixMappings listPrefixMappings)
+        (rdfGraph::TriplesGraph) = mkRdf (concat triples) Nothing prefixes
+    outh <- openFile "rdf_output.ttl" WriteMode
+    hWriteRdf (TurtleSerializer Nothing prefixes) outh rdfGraph
+    hClose outh
+
+showUsage = "Usage: ./ListEventsToRDF <list_data.xml>"
 
 -- Maps over the elements for each event, creating a triple
 eventTriples :: Content a -> IO Triples
